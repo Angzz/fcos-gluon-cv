@@ -85,6 +85,10 @@ class FocalLoss(Loss):
         alpha = F.where(one_hot, self._alpha * t, (1 - self._alpha) * t)
         loss = -alpha * ((1 - pt) ** self._gamma) * F.log(F.minimum(pt + self._eps, 1))
         loss = _apply_weighting(F, loss, self._weight, sample_weight)
+        fg_mask = F.where(label > 0, F.ones_like(label), F.zeros_like(label))
+        loss = F.sum(loss, axis=-1) * fg_mask
+        return F.sum(loss) / F.sum(fg_mask)
+        return
         if self._size_average:
             return F.mean(loss, axis=self._batch_axis, exclude=True)
         else:
@@ -458,10 +462,10 @@ class DistillationSoftmaxCrossEntropyLoss(gluon.HybridBlock):
 
 class IOULoss(Loss):
     """Implementation of IOULoss."""
-    def __init__(self, return_iou, weight=None, batch_axis=0, **kwargs):
+    def __init__(self, return_iou, eps=1e-5, weight=None, batch_axis=0, **kwargs):
         super(IOULoss, self).__init__(weight, batch_axis, **kwargs)
         self._return_iou = return_iou
-
+        self._eps = eps
 
     def hybrid_forward(self, F, pred, gt, label):
         """
@@ -472,7 +476,7 @@ class IOULoss(Loss):
         px1, py1, px2, py2 = F.split(pred, num_outputs=4, axis=-1, squeeze_axis=True)
         gx1, gy1, gx2, gy2 = F.split(gt, num_outputs=4, axis=-1, squeeze_axis=True)
         apd = F.max(px2 - px1 + 1, 0) * F.max(py2 - py1 + 1, 0)
-        agt = F.max(px2 - px1 + 1, 0) * F.max(py2 - py1 + 1, 0)
+        agt = F.max(gx2 - gx1 + 1, 0) * F.max(gy2 - gy1 + 1, 0)
 
         iw = F.maximum(F.minimum(px2, gx2) - F.maximum(px1, gx1)+1, 0)
         ih = F.maximum(F.minimum(py2, gy2) - F.maximum(py1, gy1)+1, 0)
@@ -481,8 +485,8 @@ class IOULoss(Loss):
         ious = F.max(ain / union, 0)
         # label = F.squeeze(label, axis=-1)
         fg_mask = F.where(label > 0, F.ones_like(label), F.zeros_like(label))
-        loss = -F.log(ious) * fg_mask
+        loss = -F.log(ious+self._eps) * fg_mask
         if self._return_iou:
-            return F.sum(loss) / F.sum(fg_mask), ious
+            return F.sum(loss) / F.sum(fg_mask), ious, ain, union, apd, agt
         return F.sum(loss) / F.sum(fg_mask)
 

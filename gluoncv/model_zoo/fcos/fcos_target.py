@@ -13,8 +13,8 @@ from IPython import embed
 
 class FCOSTargetGenerator(nn.Block):
     """Generate FCOS targets"""
-    def __init__(self, retina_stages=5, base_stride=8,
-                 valid_range=[(0, 64),(64, 128),(128, 256),(256, 512),(512, np.inf)],
+    def __init__(self, retina_stages=5, base_stride=128,
+                 valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
                  **kwargs):
 
         super(FCOSTargetGenerator, self).__init__(**kwargs)
@@ -58,15 +58,24 @@ class FCOSTargetGenerator(nn.Block):
             offsets = nd.concat(of_l.reshape(-2, 1), of_t.reshape(-2, 1),
                                 of_r.reshape(-2, 1), of_b.reshape(-2, 1), dim=-1)
 
-            fh = int(np.ceil(((rh + 1) / 2) // 2 / 2))
-            fw = int(np.ceil(((rw + 1) / 2) // 2 / 2))
+            # fh = int(np.ceil(((rh + 1) / 2) // 2 / 2))
+            # fw = int(np.ceil(((rw + 1) / 2) // 2 / 2))
+            fh = int(np.ceil(np.ceil(np.ceil(rh / 2) / 2) / 2))
+            fw = int(np.ceil(np.ceil(np.ceil(rw / 2) / 2) / 2))
 
+            fm_list = []
+            for i in range(self._stages):
+                fm_list.append((fh, fw))
+                fh = int(np.ceil(fh / 2))
+                fw = int(np.ceil(fw / 2))
+            fm_list = fm_list[::-1]
             cls_targets = []
             ctr_targets = []
             box_targets = []
             cor_targets = []
             stride = self._stride
             for i in range(self._stages):
+                fh, fw = fm_list[i]
                 cls_target = nd.zeros((fh, fw))
                 box_target = nd.zeros((fh, fw, 4))
                 ctr_target = nd.zeros((fh, fw))
@@ -81,7 +90,7 @@ class FCOSTargetGenerator(nn.Block):
                 # by = sxy[:, 1] * stride + nd.floor(sxy[:, 1] / 2).astype(np.int32)
                 by = syx[:, 0] * stride
                 bx = syx[:, 1] * stride
-                cor_targets.append(syx)
+                cor_targets.append(nd.stack(by, bx, axis=1))
 
                 # [FH*FW, N, 4]
                 of_byx = offsets[by, bx]
@@ -106,13 +115,10 @@ class FCOSTargetGenerator(nn.Block):
                 # ctr targets
                 ctr_target[syx[:, 0], syx[:, 1]] = ctr[by, bx, gt_inds[syx[:, 0], syx[:, 1]]]
                 ctr_target = ctr_target.reshape(-1)
-
                 box_targets.append(box_target)
                 cls_targets.append(cls_target)
                 ctr_targets.append(ctr_target)
-                stride *= 2
-                fh = int(np.ceil(fh / 2))
-                fw = int(np.ceil(fw / 2))
+                stride = int(stride / 2)
             box_targets = nd.concat(*box_targets, dim=0)
             cls_targets = nd.concat(*cls_targets, dim=0)
             ctr_targets = nd.concat(*ctr_targets, dim=0)
@@ -143,12 +149,12 @@ class FCOSBoxConverter(nn.HybridBlock):
             y1 = cy - pt
             x2 = cx + pr
             y2 = cy + pb
-            boxes = F.concat(x1, y2, x2, y2, dim=2)
+            boxes = F.concat(x1, y1, x2, y2, dim=2)
             return boxes
 
 
 if __name__ == '__main__':
-    img = nd.zeros(shape=(640, 899, 3))
+    img = nd.zeros(shape=(600, 899, 3))
 
     boxes = nd.array([[1, 88, 821, 480, 60],
                       [1, 75, 600, 251, 60],

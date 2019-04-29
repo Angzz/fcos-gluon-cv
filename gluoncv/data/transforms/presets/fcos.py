@@ -99,7 +99,7 @@ def load_test(filenames, short=600, max_size=1000, mean=(0.485, 0.456, 0.406),
 class FCOSDefaultTrainTransform(object):
     def __init__(self, short=600, max_size=1000, mean=(0.485, 0.456, 0.406),
                  std=(0.229, 0.224, 0.225), flip_p=0.5, retina_stages=5,
-                 base_stride=8, num_class=80, **kwargs):
+                 base_stride=128, num_class=80, **kwargs):
         self._short = short
         self._max_size = max_size
         self._mean = mean

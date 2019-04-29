@@ -223,7 +223,7 @@ def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
                                               'layers4_relu8_fwd'])
     # out = features(mx.sym.var('data'))
     # for o in out:
-    #     print(o.infer_shape(data=(1, 3, 600, 600))[1][0])
+    #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
     return get_fcos(name="fcos_resnet50_v1b", dataset="coco", pretrained=pretrained,
                     features=features, classes=classes, base_stride=128, short=600,
                     max_size=1000, norm_layer=None, norm_kwargs=None)
