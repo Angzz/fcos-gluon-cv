@@ -14,8 +14,7 @@ from IPython import embed
 class FCOSTargetGenerator(nn.Block):
     """Generate FCOS targets"""
     def __init__(self, retina_stages=5, base_stride=128,
-                 valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
-                 **kwargs):
+                 valid_range=[(384, np.inf), (192, 384), (96, 192), (48, 96), (0, 48)], **kwargs):
 
         super(FCOSTargetGenerator, self).__init__(**kwargs)
         self._stages = retina_stages
@@ -90,7 +89,7 @@ class FCOSTargetGenerator(nn.Block):
                 # by = sxy[:, 1] * stride + nd.floor(sxy[:, 1] / 2).astype(np.int32)
                 by = syx[:, 0] * stride
                 bx = syx[:, 1] * stride
-                cor_targets.append(nd.stack(by, bx, axis=1))
+                cor_targets.append(nd.stack(bx, by, axis=1))
 
                 # [FH*FW, N, 4]
                 of_byx = offsets[by, bx]
@@ -142,15 +141,14 @@ class FCOSBoxConverter(nn.HybridBlock):
         box_cords : [B, N, 2]
             coordinates for the feature map corresponding to original image.
         """
-        with autograd.pause():
-            cy, cx = F.split(box_cords, num_outputs=2, axis=-1)
-            pl, pt, pr, pb = F.split(box_preds, num_outputs=4, axis=-1)
-            x1 = cx - pl
-            y1 = cy - pt
-            x2 = cx + pr
-            y2 = cy + pb
-            boxes = F.concat(x1, y1, x2, y2, dim=2)
-            return boxes
+        cx, cy = F.split(box_cords, num_outputs=2, axis=-1)
+        pl, pt, pr, pb = F.split(box_preds, num_outputs=4, axis=-1)
+        x1 = cx - pl
+        y1 = cy - pt
+        x2 = cx + pr
+        y2 = cy + pb
+        boxes = F.concat(x1, y1, x2, y2, dim=2)
+        return boxes
 
 
 if __name__ == '__main__':

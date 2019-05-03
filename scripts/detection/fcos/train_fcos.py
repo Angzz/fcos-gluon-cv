@@ -1,27 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
 sys.path.append('/data/gluon-cv/')
-#
-# import mxnet as mx
-# from mxnet import gluon
-#
-# from gluoncv.nn.feature import RetinaFeatureExpander
-# from gluoncv.model_zoo.resnetv1b import resnet50_v1b
-#
-# resnet50_v1b = resnet50_v1b(pretrained=True)
-#
-# feature = RetinaFeatureExpander(network=resnet50_v1b,
-#                                 outputs = ['layers2_relu11_fwd',
-#                                            'layers3_relu17_fwd', 'layers4_relu8_fwd'],
-#                                 pretrained=True, ctx=mx.gpu(0))
-#
-# feature = feature(mx.sym.var('data'))
-# model = gluon.SymbolBlock(feature, inputs=mx.sym.var('data'), params=resnet50_v1b.collect_params())
-# from IPython import embed; embed()
-# x = mx.nd.random.normal(shape=(1, 3, 640, 640))
-# y = model(x)
-#
-# from IPython import embed; embed()
 "Train FCOS end to end."
 import os
 import argparse
@@ -85,7 +64,7 @@ def parse_args():
                         help='Saving parameter prefix')
     parser.add_argument('--save-interval', type=int, default=1,
                         help='Saving parameters epoch interval, best model will always be saved.')
-    parser.add_argument('--val-interval', type=int, default=1,
+    parser.add_argument('--val-interval', type=int, default=10,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
     parser.add_argument('--seed', type=int, default=233,
@@ -156,9 +135,10 @@ def get_dataloader(net, train_dataset, val_dataset, train_transform, val_transfo
     """Get dataloader."""
     train_bfn = batchify.Tuple(*[batchify.Append() for _ in range(5)])
     train_loader = mx.gluon.data.DataLoader(
-        train_dataset.transform(train_transform(net.short, net.max_size)),
-        batch_size, True, batchify_fn=train_bfn, last_batch='rollover',
-        num_workers=num_workers)
+        train_dataset.transform(train_transform(
+            net.short, net.max_size, net.base_stride, net.valid_range)),
+            batch_size, True, batchify_fn=train_bfn, last_batch='rollover',
+            num_workers=num_workers)
     val_bfn = batchify.Tuple(*[batchify.Append() for _ in range(3)])
     short = net.short[-1] if isinstance(net.short, (tuple, list)) else net.short
     val_loader = mx.gluon.data.DataLoader(
@@ -183,7 +163,7 @@ def save_params(net, logger, best_map, current_map, epoch, save_interval, prefix
 
 
 def get_lr_at_iter(alpha):
-    return 1. / 3. * (1 - alpha) + alpha
+    return 1. / 10. * (1 - alpha) + alpha
 
 
 def split_and_load(batch, ctx_list):
@@ -197,19 +177,24 @@ def split_and_load(batch, ctx_list):
 
 def validate(net, val_data, ctx, eval_metric):
     """Test on validation dataset."""
+    clipper = gcv.nn.bbox.BBoxClipToImage()
     eval_metric.reset()
+
     # set nms threshold and topk constraint
     net.set_nms(nms_thresh=0.45, nms_topk=400)
-    net.hybridize(static_alloc=True, static_shape=True)
+    if not args.disable_hybridization:
+        net.hybridize(static_alloc=args.static_alloc)
     for batch in val_data:
-        data = gluon.utils.split_and_load(batch[0], ctx_list=ctx, batch_axis=0, even_split=False)
-        label = gluon.utils.split_and_load(batch[1], ctx_list=ctx, batch_axis=0, even_split=False)
+        batch = split_and_load(batch, ctx_list=ctx)
         det_bboxes = []
         det_ids = []
         det_scores = []
         gt_bboxes = []
         gt_ids = []
         gt_difficults = []
+        for x, y, im_scale in zip(*batch):
+            # get prediction results
+            pass
         for x, y in zip(data, label):
             # get prediction results
             ids, scores, bboxes = net(x)
@@ -229,6 +214,7 @@ def validate(net, val_data, ctx, eval_metric):
 def train(net, train_data, val_data, eval_metric, ctx, args):
     """Training pipeline"""
     net.collect_params().reset_ctx(ctx)
+    # net.collect_params().setattr('grad_req', 'null')
     trainer = gluon.Trainer(
         net.collect_params(),  # fix batchnorm, fix first stage, etc...
         'sgd',
@@ -242,9 +228,10 @@ def train(net, train_data, val_data, eval_metric, ctx, args):
     lr_warmup = float(args.lr_warmup)
 
     # losses and metrics
-    fcos_cls_loss = gcv.loss.FocalLoss(from_logits=True, sparse_label=True, num_class=81)
-    fcos_ctr_loss = mx.gluon.loss.SigmoidBinaryCrossEntropyLoss()
-    fcos_box_loss = gcv.loss.IOULoss(return_iou=True)
+    fcos_cls_loss = gcv.loss.SigmoidFocalLoss(
+            from_logits=False, sparse_label=True, num_class=net.classes+1)
+    fcos_ctr_loss = gcv.loss.CtrNessLoss()
+    fcos_box_loss = gcv.loss.IOULoss(return_iou=False)
 
     # set up logger
     logging.basicConfig()
@@ -291,36 +278,55 @@ def train(net, train_data, val_data, eval_metric, ctx, args):
                     trainer.set_learning_rate(new_lr)
             batch = split_and_load(batch, ctx_list=ctx)
             batch_size = len(batch[0])
+            losses = []
+            cls_losses = []
+            ctr_losses = []
+            box_losses = []
             with autograd.record():
-                cls_preds, cls_targets = [], []
-                ctr_preds, ctr_targets = [], []
-                box_preds, box_targets = [], []
+                # per card
                 for data, cls_target, ctr_target, box_target, cor_target in zip(*batch):
+                    if cls_target.sum().asscalar() == 0:
+                        batch_size -= int(data.shape[0])
+                        # TODO@ANG: fix the lr if data is invalid
+                        # trainer.set_learning_rate()
+                        continue
                     # [B, N, C], [B, N, 1], [B, N, 4]
                     cls_pred, ctr_pred, box_pred = net(data)
-                    cls_preds.append(cls_pred)
-                    ctr_preds.append(ctr_pred)
-                    cor_target = cor_target.astype('float32')
                     box_pred = net.box_converter(box_pred, cor_target)
-                    box_preds.append(box_pred)
-                    cls_targets.append(cls_target)
-                    ctr_targets.append(ctr_target)
-                    box_targets.append(box_target)
-                cls_preds = mx.nd.concat(*cls_preds, dim=0)
-                ctr_preds = mx.nd.concat(*ctr_preds, dim=0)
-                box_preds = mx.nd.concat(*box_preds, dim=0)
-                cls_targets = mx.nd.concat(*cls_targets, dim=0)
-                ctr_targets = mx.nd.concat(*ctr_targets, dim=0)
-                box_targets = mx.nd.concat(*box_targets, dim=0)
-                cls_loss = fcos_cls_loss(cls_preds, cls_targets)
-                ctr_loss = fcos_ctr_loss(ctr_preds, ctr_targets)
-                box_loss, ious = fcos_box_loss(box_preds, box_targets, cls_targets)
-                loss = cls_loss + ctr_loss
-                embed()
-                autograd.backward(loss)
-                print("cls loss: %.3f, ctr_loss: %.3f, box_loss: %.3f" % \
-                        (cls_loss.asnumpy()[0], ctr_loss.asnumpy()[0], 0))
-            trainer.step(batch_size)
+                    cls_loss = fcos_cls_loss(cls_pred, cls_target)
+                    ctr_pred = ctr_pred.squeeze(axis=-1)
+                    ctr_loss = fcos_ctr_loss(ctr_pred, ctr_target, cls_target)
+                    box_loss = fcos_box_loss(box_pred, box_target, cls_target)
+                    loss = cls_loss + ctr_loss + box_loss
+                    losses.append(loss)
+                    cls_losses.append(cls_loss.asscalar())
+                    ctr_losses.append(ctr_loss.asscalar())
+                    box_losses.append(box_loss.asscalar())
+                autograd.backward(losses)
+            trainer.step(batch_size) # normalize by batch_size
+            if args.log_interval and not (i + 1) % args.log_interval:
+                total_cls_loss = np.array(cls_losses, dtype=np.float32).mean()
+                total_ctr_loss = np.array(ctr_losses, dtype=np.float32).mean()
+                total_box_loss = np.array(box_losses, dtype=np.float32).mean()
+                print_loss = {'cls_loss': total_cls_loss, 'ctr_loss': total_ctr_loss, \
+                        'box_loss': total_box_loss}
+                msg = ', '.join(['{}={:.3f}'.format(k, v) for k, v in print_loss.items()])
+                logger.info('[Epoch {}][Batch {}], Speed: {:.3f} samples/sec, {}'\
+                        .format(epoch, i, args.log_interval * batch_size / (time.time() \
+                        - btic), msg))
+                btic = time.time()
+        logger.info('[Epoch {}] Training cost: {:.3f}'.format(
+            epoch, (time.time() - tic)))
+        if not (epoch + 1) % args.val_interval:
+            # consider reduce the frequency of validation to save time
+            map_name, mean_ap = validate(net, val_data, ctx, eval_metric, args)
+            val_msg = '\n'.join(['{}={}'.format(k, v) for k, v in zip(map_name, mean_ap)])
+            logger.info('[Epoch {}] Validation: \n{}'.format(epoch, val_msg))
+            current_map = float(mean_ap[-1])
+        else:
+            current_map = 0.
+        save_params(net, logger, best_map, current_map, epoch, args.save_interval, args.save_prefix)
+
 
 if __name__ == '__main__':
     import sys

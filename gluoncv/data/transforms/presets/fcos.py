@@ -97,9 +97,10 @@ def load_test(filenames, short=600, max_size=1000, mean=(0.485, 0.456, 0.406),
 
 
 class FCOSDefaultTrainTransform(object):
-    def __init__(self, short=600, max_size=1000, mean=(0.485, 0.456, 0.406),
-                 std=(0.229, 0.224, 0.225), flip_p=0.5, retina_stages=5,
-                 base_stride=128, num_class=80, **kwargs):
+    def __init__(self, short=600, max_size=1000, base_stride=128,
+                 valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
+                 mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225),
+                 flip_p=0.5, retina_stages=5, num_class=80, **kwargs):
         self._short = short
         self._max_size = max_size
         self._mean = mean
@@ -110,7 +111,7 @@ class FCOSDefaultTrainTransform(object):
 
         from ....model_zoo.fcos.fcos_target import FCOSTargetGenerator
         self._target_generator = FCOSTargetGenerator(retina_stages=retina_stages,
-                                    base_stride=base_stride)
+                                    base_stride=base_stride, valid_range=valid_range)
 
     def __call__(self, src, label):
         "Apply transform to training image/label."
@@ -130,7 +131,9 @@ class FCOSDefaultTrainTransform(object):
 
         # generate training targets for fcos
         tbox = mx.nd.array(bbox)
+        tbox[:, 4] += 1 #
         cls_targets, ctr_targets, box_targets, cor_targets = self._target_generator(img, tbox)
+        cor_targets = cor_targets.astype('float32')
 
         # to tensor
         img = mx.nd.image.to_tensor(img)
@@ -140,12 +143,22 @@ class FCOSDefaultTrainTransform(object):
 
 
 class FCOSDefaultValTransform(object):
-    def __init__(self, short=600, max_size=1000,
+    def __init__(self, short=600, max_size=1000, base_stride=128, retina_stages=5,
                  mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
         self._mean = mean
         self._std = std
         self._short = short
         self._max_size = max_size
+        self._base_stride = base_stride
+        self._retina_stages = retina_stages
+
+    def _generate_coordinates(self, img):
+        h, w, _ = img.shape
+        fh = int(np.ceil(np.ceil(np.ceil(h / 2) / 2) / 2))
+        fw = int(np.ceil(np.ceil(np.ceil(w / 2) / 2) / 2))
+        for i in range(self._retina_stages):
+
+
 
     def __call__(self, src, label):
         """Apply transform to validation image/label."""
@@ -155,6 +168,9 @@ class FCOSDefaultValTransform(object):
         # no scaling ground-truth, return image scaling ratio instead
         bbox = tbbox.resize(label, (w, h), (img.shape[1], img.shape[0]))
         im_scale = h / float(img.shape[0])
+
+
+
 
         img = mx.nd.image.to_tensor(img)
         img = mx.nd.image.normalize(img, mean=self._mean, std=self._std)

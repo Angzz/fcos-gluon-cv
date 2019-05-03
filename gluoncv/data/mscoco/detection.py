@@ -189,7 +189,7 @@ class COCODetection(VisionDataset):
             # require non-zero box area
             if obj['area'] > 0 and xmax > xmin and ymax > ymin:
                 contiguous_cid = self.json_id_to_contiguous[obj['category_id']]
-                valid_objs.append([xmin, ymin, xmax, ymax, contiguous_cid+1])
+                valid_objs.append([xmin, ymin, xmax, ymax, contiguous_cid])
         if not valid_objs:
             if not self._skip_empty:
                 # dummy invalid labels if no valid objects are found

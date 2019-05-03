@@ -2,9 +2,6 @@
 """Fully Convolutional One-Stage Object Detection."""
 from __future__ import absolute_import
 
-import sys
-sys.path.append('/data/gluon-cv/')
-
 import os
 import warnings
 
@@ -93,19 +90,21 @@ class ClsBiasInit(mx.init.Initializer):
 
 
 class FCOS(nn.HybridBlock):
-    r"""Fully Convolutional One-Stage Object Detection."""
+    """Fully Convolutional One-Stage Object Detection."""
     def __init__(self, features, classes, base_stride=128, short=600, max_size=1000,
+                 valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
                  retina_stages=5, pretrained=False, norm_layer=None, norm_kwargs=None,
                  ctx=mx.cpu(), **kwargs):
         super(FCOS, self).__init__(**kwargs)
         self.short = short
         self.max_size = max_size
-        self._classes = len(classes)
-        self._base_stride = base_stride
+        self.base_stride = base_stride
+        self.valid_range = valid_range
+        self.classes = len(classes)
         self._retina_stages = retina_stages
 
         with self.name_scope():
-            bias_init = ClsBiasInit(self._classes)
+            bias_init = ClsBiasInit(self.classes)
             cls_heads = nn.HybridSequential()
             box_heads = nn.HybridSequential()
             cls_preds = nn.HybridSequential()
@@ -119,23 +118,25 @@ class FCOS(nn.HybridBlock):
                 cls_head = RetinaHead(share_params=share_cls_params)
                 cls_heads.add(cls_head)
                 share_cls_params = cls_head.get_params()
+                share_cls_params = None
                 # box
                 box_head = RetinaHead(share_params=share_box_params)
                 box_heads.add(box_head)
                 share_box_params = box_head.get_params()
+                share_box_params = None
                 # cls preds
-                cls_pred = ConvPredictor(num_channels=self._classes,
+                cls_pred = ConvPredictor(num_channels=self.classes,
                                 share_params=share_cls_pred_params, bias_init=bias_init)
                 cls_preds.add(cls_pred)
                 share_cls_pred_params = cls_pred.get_params()
                 # ctr preds
-                ctr_pred = ConvPredictor(
-                        num_channels=1, share_params=share_ctr_pred_params)
+                ctr_pred = ConvPredictor(num_channels=1,
+                                share_params=share_ctr_pred_params, bias_init='zeros')
                 ctr_preds.add(ctr_pred)
                 share_ctr_pred_params = ctr_pred.get_params()
                 # box preds
-                box_pred = ConvPredictor(
-                        num_channels=4, share_params=share_box_pred_params)
+                box_pred = ConvPredictor(num_channels=4,
+                                share_params=share_box_pred_params, bias_init='zeros')
                 box_preds.add(box_pred)
                 share_box_pred_params = box_pred.get_params()
 
@@ -169,7 +170,7 @@ class FCOS(nn.HybridBlock):
         cls_preds_list = []
         ctr_preds_list = []
         box_preds_list = []
-        stride = self._base_stride
+        stride = self.base_stride
         retina_fms = self._retina_features(x)
         for i in range(self._retina_stages):
             x = retina_fms[i]
@@ -177,8 +178,8 @@ class FCOS(nn.HybridBlock):
             fm_cls = self._cls_heads[i](fm_cls)
             cls_pred = self._cls_preds[i](fm_cls)
             ctr_pred = self._ctr_preds[i](fm_cls)
-            cls_pred = F.sigmoid(cls_pred)
-            cls_pred = F.reshape(F.transpose(cls_pred, (0, 2, 3, 1)), (0, -1, self._classes))
+            # cls_pred = F.sigmoid(cls_pred)
+            cls_pred = F.reshape(F.transpose(cls_pred, (0, 2, 3, 1)), (0, -1, self.classes))
             ctr_pred = F.reshape(F.transpose(ctr_pred, (0, 2, 3, 1)), (0, -1, 1))
 
             fm_box = x
@@ -225,8 +226,9 @@ def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
     # for o in out:
     #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
     return get_fcos(name="fcos_resnet50_v1b", dataset="coco", pretrained=pretrained,
-                    features=features, classes=classes, base_stride=128, short=600,
-                    max_size=1000, norm_layer=None, norm_kwargs=None)
+                    features=features, classes=classes, base_stride=128, short=800,
+                    max_size=1333, norm_layer=None, norm_kwargs=None,
+                    valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)])
 
 if __name__ == '__main__':
     net = fcos_resnet50_v1b_coco(pretrained_base=True, ctx=mx.gpu(0))
