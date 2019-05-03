@@ -157,7 +157,7 @@ class FCOSDefaultValTransform(object):
         fh = int(np.ceil(np.ceil(np.ceil(h / 2) / 2) / 2))
         fw = int(np.ceil(np.ceil(np.ceil(w / 2) / 2) / 2))
         for i in range(self._retina_stages):
-
+            pass
 
 
     def __call__(self, src, label):
