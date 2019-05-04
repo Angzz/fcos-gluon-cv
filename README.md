@@ -29,6 +29,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ln -s $DOWNLOAD_PATH ~/.mxnet/datasets/coco
   ```
    You can also download from [cocodataset](http://cocodataset.org) and execute the command above.
+   
 2. More preparations can also refer to [GluonCV](https://gluon-cv.mxnet.io/index.html).
 
 3. All experiments are performed on `8 * 2080ti` GPU with `Python3.5`, `cuda10.0` and `cudnn7.5.0`.
@@ -42,5 +43,3 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ```Shell
   python3 eval_fcos.py --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
   ```
-  
-## 
