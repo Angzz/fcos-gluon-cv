@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-sys.path.append('/data/gluon-cv/')
 "Train FCOS end to end."
 import os
 import argparse
@@ -21,14 +19,13 @@ from gluoncv.data import batchify
 from gluoncv.data.transforms.presets.fcos import \
         FCOSDefaultTrainTransform, FCOSDefaultValTransform
 from gluoncv.utils.metrics.coco_detection import COCODetectionMetric
-
 from IPython import embed
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train FCOS networks e2e.')
     parser.add_argument('--network', type=str, default='resnet50_v1b',
                         help="Base network name which serves as feature extraction base.")
-    parser.add_argument('--batch-size', type=int, default=8,
+    parser.add_argument('--batch-size', type=int, default=1,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='coco',
                         help='Training dataset. Now support voc and coco.')
@@ -64,7 +61,7 @@ def parse_args():
                         help='Saving parameter prefix')
     parser.add_argument('--save-interval', type=int, default=1,
                         help='Saving parameters epoch interval, best model will always be saved.')
-    parser.add_argument('--val-interval', type=int, default=10,
+    parser.add_argument('--val-interval', type=int, default=1,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
     parser.add_argument('--seed', type=int, default=233,
@@ -139,10 +136,10 @@ def get_dataloader(net, train_dataset, val_dataset, train_transform, val_transfo
             net.short, net.max_size, net.base_stride, net.valid_range)),
             batch_size, True, batchify_fn=train_bfn, last_batch='rollover',
             num_workers=num_workers)
-    val_bfn = batchify.Tuple(*[batchify.Append() for _ in range(3)])
+    val_bfn = batchify.Tuple(*[batchify.Append() for _ in range(4)])
     short = net.short[-1] if isinstance(net.short, (tuple, list)) else net.short
     val_loader = mx.gluon.data.DataLoader(
-        val_dataset.transform(val_transform(short, net.max_size)),
+        val_dataset.transform(val_transform(short, net.max_size, net.base_stride)),
         batch_size, False, batchify_fn=val_bfn, last_batch='keep', num_workers=num_workers)
     return train_loader, val_loader
 
@@ -175,15 +172,15 @@ def split_and_load(batch, ctx_list):
         new_batch.append(new_data)
     return new_batch
 
+
 def validate(net, val_data, ctx, eval_metric):
     """Test on validation dataset."""
     clipper = gcv.nn.bbox.BBoxClipToImage()
     eval_metric.reset()
-
-    # set nms threshold and topk constraint
-    net.set_nms(nms_thresh=0.45, nms_topk=400)
-    if not args.disable_hybridization:
-        net.hybridize(static_alloc=args.static_alloc)
+    net.hybridize(static_alloc=True)
+    nms_thresh = net.nms_thresh
+    nms_topk = net.nms_topk
+    save_topk = net.save_topk
     for batch in val_data:
         batch = split_and_load(batch, ctx_list=ctx)
         det_bboxes = []
@@ -192,24 +189,40 @@ def validate(net, val_data, ctx, eval_metric):
         gt_bboxes = []
         gt_ids = []
         gt_difficults = []
-        for x, y, im_scale in zip(*batch):
+        for x, y, cor, im_scale in zip(*batch):
             # get prediction results
-            pass
-        for x, y in zip(data, label):
-            # get prediction results
-            ids, scores, bboxes = net(x)
-            det_ids.append(ids)
-            det_scores.append(scores)
-            # clip to image size
-            det_bboxes.append(bboxes.clip(0, batch[0].shape[2]))
+            cls_probs, bboxes = net(x)
+            cls_id = cls_probs.argmax(axis=-1)
+            probs = mx.nd.pick(cls_probs, cls_id)
+            bboxes = net.box_converter(bboxes, cor)
+            bboxes = clipper(bboxes.squeeze(axis=0), x)
+            im_scale = im_scale.reshape((-1)).asscalar()
+            bboxes *= im_scale
+            cls_id = cls_id.squeeze(axis=0)
+            probs = probs.squeeze(axis=0)
+            bboxes = bboxes.squeeze(axis=0)
+            target = mx.nd.concat(cls_id.expand_dims(axis=1),
+                        probs.expand_dims(axis=1), bboxes, dim=-1)
+            keep = mx.nd.contrib.box_nms(target, overlap_thresh=nms_thresh, coord_start=2,
+                                         topk=nms_topk, valid_thresh=0.00001, score_index=1,
+                                         id_index=0, force_suppress=False,
+                                         in_format='corner', out_format='corner')
+            keep = keep[:save_topk].expand_dims(axis=0)
+            det_ids.append(keep.slice_axis(axis=-1, begin=0, end=1))
+            det_scores.append(keep.slice_axis(axis=-1, begin=1, end=2))
+            det_bboxes.append(keep.slice_axis(axis=-1, begin=2, end=None))
             # split ground truths
             gt_ids.append(y.slice_axis(axis=-1, begin=4, end=5))
             gt_bboxes.append(y.slice_axis(axis=-1, begin=0, end=4))
-            gt_difficults.append(y.slice_axis(axis=-1, begin=5, end=6) if y.shape[-1] > 5 else None)
-
+            gt_bboxes[-1] *= im_scale
+            gt_difficults.append(
+                    y.slice_axis(axis=-1, begin=5, end=6) if y.shape[-1] > 5 else None)
         # update metric
-        eval_metric.update(det_bboxes, det_ids, det_scores, gt_bboxes, gt_ids, gt_difficults)
+        for det_bbox, det_id, det_score, gt_bbox, gt_id, gt_diff in \
+            zip(det_bboxes, det_ids, det_scores, gt_bboxes, gt_ids, gt_difficults):
+            eval_metric.update(det_bbox, det_id, det_score, gt_bbox, gt_id, gt_diff)
     return eval_metric.get()
+
 
 def train(net, train_data, val_data, eval_metric, ctx, args):
     """Training pipeline"""
