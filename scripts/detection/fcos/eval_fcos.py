@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-sys.path.append('/data/gluon-cv/')
 "Validate FCOS end to end."
 import os
 import argparse
