@@ -6,13 +6,13 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 ## Installation 
 1.Install cuda `10.0` and mxnet `1.4.0`.
   ```Shell
-  pip3 install mxnet-cu100==1.4.0.post0
+  sudo pip3 install mxnet-cu100==1.4.0.post0
   ```
 2. Clone the code, and install gluoncv with ``setup.py``.
   ```Shell
   cd fcos-gluon-cv
-  python setup.py build
-  python setup.py install
+  sudo python3 setup.py build
+  sudo python3 setup.py install
   ```
 
 ## Preparation
