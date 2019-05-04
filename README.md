@@ -43,3 +43,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ```Shell
   python3 eval_fcos.py --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
   ```
+
+## Reference 
+
+* **FCOS:** Zhi Tian, Chunhua Shen, Hao Chen, Tong He.<br />"FCOS: Fully Convolutional One-Stage Object Detection." arXiv (2019). [[paper](https://arxiv.org/pdf/1904.01355)] [[code](https://github.com/tianzhi0549/FCOS)]
