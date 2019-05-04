@@ -27,7 +27,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 ## Training & Validation 
 1.Copy the training scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/train_fcos.py), then train `fcos_resnet50_v1b_coco` with:
   ```Shell
-  python3 train_fcos.py --network resnet50_v1b --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --batch-size 8
+  python3 train_fcos.py --network resnet50_v1b --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --batch-size 8 --log-interval 10
   ```
 2.Copy the eval scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/eval_fcos.py), then validate `fcos_resnet50_v1b_coco` with:
   ```Shell
