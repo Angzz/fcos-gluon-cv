@@ -4,11 +4,11 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 
 ## Main Results
 
-| Model | Backbone | Train Size | Batch Size | AP(val) | Link |
-| :----------: | :----------: | :----------: | :----------: | :----------: | :----------: |
-| fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | - |
-| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | - |
-| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - | - |
+| Model | Backbone | Train Size | Batch Size | Test Time/im | AP(val) | Link |
+| :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: |
+| fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | - | - |
+| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | - | - |
+| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - | - | - |
 
 
 ## Installation 
@@ -28,7 +28,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ```Shell
   ln -s $DOWNLOAD_PATH ~/.mxnet/datasets/coco
   ```
-   You can also download from [cocodataset]http://cocodataset.org and execute the command above.
+   You can also download from [cocodataset](http://cocodataset.org) and execute the command above.
 2. More preparations can also refer to [GluonCV](https://gluon-cv.mxnet.io/index.html).
 
 3. All experiments are performed on `8 * 2080ti` GPU with `Python3.5`, `cuda10.0` and `cudnn7.5.0`.
@@ -42,3 +42,5 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ```Shell
   python3 eval_fcos.py --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
   ```
+  
+## 
