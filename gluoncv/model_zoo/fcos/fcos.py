@@ -14,7 +14,10 @@ from IPython import embed
 from .fcos_target import FCOSBoxConverter
 from ...nn.feature import RetinaFeatureExpander
 
-__all__ = ['FCOS', 'get_fcos', 'fcos_resnet50_v1b_coco', 'fcos_resnet101_v1d_coco']
+__all__ = ['FCOS', 'get_fcos',
+           'fcos_resnet50_v1_coco',
+           'fcos_resnet50_v1b_coco',
+           'fcos_resnet101_v1d_coco']
 
 
 class ConvPredictor(nn.HybridBlock):
@@ -107,6 +110,7 @@ class FCOS(nn.HybridBlock):
         self._retina_stages = retina_stages
 
         with self.name_scope():
+            self.scale_param = self.params.get('scale', shape=(1,))
             bias_init = ClsBiasInit(self.classes)
             cls_heads = nn.HybridSequential()
             box_heads = nn.HybridSequential()
@@ -160,7 +164,7 @@ class FCOS(nn.HybridBlock):
         """
         pass
 
-    def hybrid_forward(self, F, x):
+    def hybrid_forward(self, F, x, scale_param):
         """make fcos heads
         x : [B, C, H, W]
 
@@ -188,7 +192,7 @@ class FCOS(nn.HybridBlock):
             fm_box = x
             fm_box = self._box_heads[i](fm_box)
             box_pred = self._box_preds[i](fm_box)
-            box_pred = F.exp(box_pred) * stride
+            box_pred = F.exp(F.broadcast_mul(scale_param, box_pred)) * stride
             box_pred = F.reshape(F.transpose(box_pred, (0, 2, 3, 1)), (0, -1, 4))
 
             cls_preds_list.append(cls_pred)
@@ -220,6 +224,27 @@ def get_fcos(name, dataset, pretrained=False, ctx=mx.cpu(),
         full_name = '_'.join(('fcos', name, dataset))
         net.load_parameters(get_model_file(full_name, tag=pretrained, root=root), ctx=ctx)
     return net
+
+
+def fcos_resnet50_v1_coco(pretrained=False, pretrained_base=True, **kwargs):
+    from ..resnet import resnet50_v1
+    from ...data import COCODetection
+    classes = COCODetection.CLASSES
+    pretrained_base = False if pretrained else pretrained_base
+    base_network = resnet50_v1(pretrained=pretrained_base, **kwargs)
+    features = RetinaFeatureExpander(network=base_network,
+                                     pretrained=pretrained_base,
+                                     outputs=['stage2_activation3',
+                                              'stage3_activation5',
+                                              'stage4_activation2'])
+    # out = features(mx.sym.var('data'))
+    # for o in out:
+    #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
+    return get_fcos(name="fcos_resnet50_v1", dataset="coco", pretrained=pretrained,
+                    features=features, classes=classes, base_stride=128, short=800,
+                    max_size=1333, norm_layer=None, norm_kwargs=None,
+                    valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
+                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
 
 
 def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
