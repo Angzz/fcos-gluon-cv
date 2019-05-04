@@ -22,7 +22,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
   ```
 2.More preparations can refer to [GluonCV](https://gluon-cv.mxnet.io/index.html).
 
-3.All experiments are performed on 8 * 2080ti GPU.
+3.All experiments are performed on `8 * 2080ti` GPU.
 
 ## Training & Validation 
 1.Copy the training scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/train_fcos.py), then train `fcos_resnet50_v1b_coco` with:
