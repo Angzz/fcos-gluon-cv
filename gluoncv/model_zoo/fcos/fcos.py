@@ -110,7 +110,6 @@ class FCOS(nn.HybridBlock):
         self._retina_stages = retina_stages
 
         with self.name_scope():
-            self.scale_param = self.params.get('scale', shape=(1,))
             bias_init = ClsBiasInit(self.classes)
             cls_heads = nn.HybridSequential()
             box_heads = nn.HybridSequential()
@@ -152,6 +151,8 @@ class FCOS(nn.HybridBlock):
             self._cls_preds = cls_preds
             self._ctr_preds = ctr_preds
             self._box_preds = box_preds
+            self.scale_param = self.params.get('scale', shape=(1,), differentiable=True,
+                                               allow_deferred_init=True, init='ones')
 
             self._retina_features = features
             self.box_converter = FCOSBoxConverter()
