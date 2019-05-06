@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 "Validate FCOS end to end."
-import sys
-sys.path.append('/data/gluon-cv/')
 import os
 import argparse
 # disable autotune

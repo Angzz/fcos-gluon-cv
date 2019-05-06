@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-import sys
-sys.path.append('/data/gluon-cv/')
 "Train FCOS end to end."
 import os
 import argparse
