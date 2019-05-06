@@ -9,6 +9,7 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 | fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | - | - |
 | fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | - | - |
 | fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - | - | - |
+
 Note: We will update the results after the experiments done.
 
 ## Installation 
@@ -41,7 +42,7 @@ Note: We will update the results after the experiments done.
   ```
 2. Copy the eval scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/eval_fcos.py), then validate `fcos_resnet50_v1b_coco` with:
   ```Shell
-  python3 eval_fcos.py --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
+  python3 eval_fcos.py --network resnet50_v1b --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
   ```
 
 ## Reference 
