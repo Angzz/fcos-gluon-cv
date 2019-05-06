@@ -365,7 +365,10 @@ if __name__ == '__main__':
         for param in net.collect_params().values():
             if param._data is not None:
                 continue
-            param.initialize()
+            if 'scale' in param.name:
+                param._data = mx.nd.ones(1)
+            else:
+                param.initialize()
     net.collect_params().reset_ctx(ctx)
 
     # training data
