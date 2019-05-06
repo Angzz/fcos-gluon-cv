@@ -35,6 +35,13 @@ Note: We will update the results after the experiments done.
 
 3. All experiments are performed on `8 * 2080ti` GPU with `Python3.5`, `cuda10.0` and `cudnn7.5.0`.
 
+## Structure
+```Shell
+* Model : $ROOT/gluoncv/model_zoo/fcos
+* Train & valid scripts : $ROOT/scripts/detection/fcos
+* Data Transform : $ROOT/gluoncv/data/transform/presets
+```
+
 ## Training & Inference 
 1. Copy the training scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/train_fcos.py), then train `fcos_resnet50_v1b_coco` with:
   ```Shell
