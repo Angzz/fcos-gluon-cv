@@ -110,12 +110,19 @@ class SigmoidFocalLoss(Loss):
             pred = F.sigmoid(pred)
         one_hot = F.one_hot(label, self._num_class)
         one_hot = F.slice_axis(one_hot, begin=1, end=None, axis=-1)
-        pos_part = F.power(1 - pred, self._gamma) * one_hot * \
-                F.log(pred + self._eps)
-        neg_part = F.power(pred, self._gamma) * (1 - one_hot) * \
-                F.log(1 - pred + self._eps)
-        loss = -F.sum(self._alpha * pos_part + (1 - self._alpha) * neg_part, axis=-1)
+        pt = F.where(one_hot, pred, 1 - pred)
+        t = F.ones_like(one_hot)
+        alpha = F.where(one_hot, self._alpha * t, (1 - self._alpha) * t)
+        loss = -alpha * ((1 - pt) ** self._gamma) * F.log(F.minimum(pt + self._eps, 1))
         loss = _apply_weighting(F, loss, self._weight, sample_weight)
+
+        # Method 2:
+        # pos_part = F.power(1 - pred, self._gamma) * one_hot * \
+        #         F.log(pred + self._eps)
+        # neg_part = F.power(pred, self._gamma) * (1 - one_hot) * \
+        #         F.log(1 - pred + self._eps)
+        # loss = -F.sum(self._alpha * pos_part + (1 - self._alpha) * neg_part, axis=-1)
+        # loss = _apply_weighting(F, loss, self._weight, sample_weight)
         pos_mask = (label > 0)
         return F.sum(loss) / F.maximum(F.sum(pos_mask), 1)
 
@@ -508,16 +515,16 @@ class IOULoss(Loss):
         apd = F.abs(px2 - px1 + 1) * F.abs(py2 - py1 + 1)
         agt = F.abs(gx2 - gx1 + 1) * F.abs(gy2 - gy1 + 1)
 
-        iw = F.maximum(F.minimum(px2, gx2) - F.maximum(px1, gx1)+1, 0.)
-        ih = F.maximum(F.minimum(py2, gy2) - F.maximum(py1, gy1)+1, 0.)
-        ain = iw * ih + 1.0
-        union = apd + agt - ain + 1.0
-        ious = F.max(ain / union, 0)
+        iw = F.maximum(F.minimum(px2, gx2) - F.maximum(px1, gx1)+1., 0.)
+        ih = F.maximum(F.minimum(py2, gy2) - F.maximum(py1, gy1)+1., 0.)
+        ain = iw * ih + 1.
+        union = apd + agt - ain + 1.
+        ious = F.maximum(ain / union, 0.)
         # label = F.squeeze(label, axis=-1)
         fg_mask = F.where(label > 0, F.ones_like(label), F.zeros_like(label))
-        loss = -F.log(ious + self._eps) * fg_mask
+        loss = -F.log(F.minimum(ious + self._eps, 1.)) * fg_mask
         if self._return_iou:
-            return F.sum(loss) / F.sum(fg_mask), ious
+            return F.sum(loss) / F.maximum(F.sum(fg_mask), 1), ious
         return F.sum(loss) / F.maximum(F.sum(fg_mask), 1)
 
 
@@ -527,9 +534,9 @@ class CtrNessLoss(Loss):
         super(CtrNessLoss, self).__init__(weight, batch_axis, **kwargs)
 
     def hybrid_forward(self, F, pred, ctr_gt, cls_gt):
-        pos_gt_mask = cls_gt > 1
+        pred = F.squeeze(pred, axis=-1)
+        pos_gt_mask = cls_gt > 0
         pos_pred_mask = pred >= 0
         loss = (pred * pos_pred_mask - pred * ctr_gt + F.log(1 + \
                 F.exp(-F.abs(pred)))) * pos_gt_mask
         return F.sum(loss) / F.maximum(F.sum(pos_gt_mask), 1)
-

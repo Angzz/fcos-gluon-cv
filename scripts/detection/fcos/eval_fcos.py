@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 "Validate FCOS end to end."
+import sys
+sys.path.append('/data/gluon-cv/')
 import os
 import argparse
 # disable autotune
@@ -116,6 +118,7 @@ def validate(net, val_data, ctx, eval_metric, size):
                                              id_index=0, force_suppress=False,
                                              in_format='corner', out_format='corner')
                 keep = keep[:save_topk].expand_dims(axis=0)
+                embed()
                 det_ids.append(keep.slice_axis(axis=-1, begin=0, end=1))
                 det_scores.append(keep.slice_axis(axis=-1, begin=1, end=2))
                 det_bboxes.append(keep.slice_axis(axis=-1, begin=2, end=None))
@@ -149,8 +152,9 @@ if __name__ == '__main__':
         net = gcv.model_zoo.get_model(net_name, pretrained=True, **kwargs)
     else:
         net = gcv.model_zoo.get_model(net_name, pretrained=False, **kwargs)
-        net.load_parameters(args.pretrained.strip())
+        net.load_parameters(args.pretrained.strip(), ignore_extra=True)
     net.collect_params().reset_ctx(ctx)
+    embed()
 
     # validation data
     val_dataset, eval_metric = get_dataset(args.dataset, args)

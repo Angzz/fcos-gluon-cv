@@ -281,38 +281,37 @@ class FPNFeatureExpander(SymbolBlock):
 
 class RetinaFeatureExpander(SymbolBlock):
     """Retina FeatureExtractor"""
-    def __init__(self, network, outputs, no_bias=True, pretrained=False,
+    def __init__(self, network, outputs, no_bias=False, pretrained=False,
                  norm_layer=None, norm_kwargs=None, ctx=mx.cpu(), inputs=('data',)):
 
         if norm_kwargs is None:
             norm_kwargs = {}
         inputs, outputs, params = _parse_network(network, outputs, inputs, pretrained, ctx)
-        weight_init = mx.init.Xavier(rnd_type='guassian', factor_type='out', magnitude=2.)
+        weight_init = mx.init.Xavier(rnd_type='gaussian', factor_type='out', magnitude=2.)
         retina_fms = []
         last_fm = None
         for i, layer in enumerate(outputs[::-1]):
             fm_1x1 = mx.sym.Convolution(layer, kernel=(1, 1), stride=(1, 1), pad=(0, 0),
-                     num_filter=256, no_bias=True, name="P{}_1x1conv".format(5-i),
+                     num_filter=256, no_bias=no_bias, name="P{}_1x1conv".format(5-i),
                      attr={'__init__': weight_init})
             if last_fm is not None:
                 last_resize = mx.sym.Deconvolution(last_fm, kernel=(2, 2), stride=(2, 2),
-                                pad=(0, 0), num_filter=256, no_bias=True, name="P{}_Up".format(5-i),
-                                attr={'__init__': weight_init})
+                                pad=(0, 0), num_filter=256, no_bias=no_bias,
+                                name="P{}_Up".format(5-i), attr={'__init__': weight_init})
                 last_resize = mx.sym.slice_like(last_resize, fm_1x1, axes=(2, 3)) # alignment
                 fm_1x1 = fm_1x1 + last_resize
             last_fm = fm_1x1
             fm_3x3 = mx.sym.Convolution(fm_1x1, kernel=(3, 3), stride=(1, 1), pad=(1, 1),
-                     num_filter=256, no_bias=True, name="P{}".format(5-i),
+                     num_filter=256, no_bias=no_bias, name="P{}".format(5-i),
                      attr={'__init__': weight_init})
             retina_fms.append(fm_3x3)
 
         fm_P6 = mx.sym.Convolution(retina_fms[0], kernel=(3, 3), stride=(2, 2), pad=(1, 1),
-                 num_filter=256, no_bias=True, name="P6", attr={'__init__': weight_init})
+                 num_filter=256, no_bias=no_bias, name="P6", attr={'__init__': weight_init})
         retina_fms.insert(0, fm_P6)
         fm_P7 = mx.sym.Activation(fm_P6, act_type="relu", name="P6_relu")
         fm_P7 = mx.sym.Convolution(fm_P7, kernel=(3, 3), stride=(2, 2), pad=(1, 1),
-                 num_filter=256, no_bias=True, name="P7", attr={'__init__': weight_init})
+                 num_filter=256, no_bias=no_bias, name="P7", attr={'__init__': weight_init})
         retina_fms.insert(0, fm_P7)
         outputs = retina_fms
         super(RetinaFeatureExpander, self).__init__(outputs, inputs, params)
-

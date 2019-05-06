@@ -201,6 +201,7 @@ _models = {
     'ssd_512_vgg16_atrous_voc_int8': ssd_512_vgg16_atrous_voc_int8,
     'fcos_resnet50_v1b_coco': fcos_resnet50_v1b_coco,
     'fcos_resnet101_v1d_coco': fcos_resnet101_v1d_coco,
+    'fcos_resnet50_v1_coco': fcos_resnet50_v1_coco,
 }
 
 

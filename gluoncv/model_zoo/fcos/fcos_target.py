@@ -97,7 +97,7 @@ class FCOSTargetGenerator(nn.Block):
                 min_vr, max_vr = self._valid_range[i]
                 # [FH*FW, N]
                 is_in_box = nd.prod(of_byx > 0, axis=-1)
-                is_valid_area = (of_byx.max(axis=-1) > min_vr) * (of_byx.max(axis=-1) < max_vr)
+                is_valid_area = (of_byx.max(axis=-1) >= min_vr) * (of_byx.max(axis=-1) <= max_vr)
                 # [FH*FW, N]
                 valid_pos = nd.elemwise_mul(is_in_box, is_valid_area)
                 of_valid = nd.zeros((fh, fw, n))

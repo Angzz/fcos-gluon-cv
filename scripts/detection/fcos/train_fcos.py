@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import sys
+sys.path.append('/data/gluon-cv/')
 "Train FCOS end to end."
 import os
 import argparse
@@ -49,7 +51,7 @@ def parse_args():
                         help='decay rate of learning rate. default is 0.1.')
     parser.add_argument('--lr-decay-epoch', type=str, default='',
                         help='epochs at which learning rate decays. default is 14,20 for voc.')
-    parser.add_argument('--lr-warmup', type=str, default='',
+    parser.add_argument('--lr-warmup', type=int, default=0,
                         help='warmup iterations to adjust learning rate, default is 0 for voc.')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='SGD momentum, default is 0.9')
@@ -298,29 +300,28 @@ def train(net, train_data, val_data, eval_metric, ctx, args):
             with autograd.record():
                 # per card
                 for data, cls_target, ctr_target, box_target, cor_target in zip(*batch):
-                    if cls_target.sum().asscalar() == 0:
-                        batch_size -= int(data.shape[0])
-                        # TODO@ANG: fix the lr if data is invalid
-                        # trainer.set_learning_rate()
-                        continue
                     # [B, N, C], [B, N, 1], [B, N, 4]
                     cls_pred, ctr_pred, box_pred = net(data)
                     box_pred = net.box_converter(box_pred, cor_target)
                     cls_loss = fcos_cls_loss(cls_pred, cls_target)
-                    ctr_pred = ctr_pred.squeeze(axis=-1)
                     ctr_loss = fcos_ctr_loss(ctr_pred, ctr_target, cls_target)
                     box_loss = fcos_box_loss(box_pred, box_target, cls_target)
-                    loss = cls_loss + ctr_loss + box_loss
+                    loss = cls_loss + box_loss + ctr_loss
+                    cls_losses.append(cls_loss)
+                    ctr_losses.append(ctr_loss)
+                    box_losses.append(box_loss)
                     losses.append(loss)
-                    cls_losses.append(cls_loss.asscalar())
-                    ctr_losses.append(ctr_loss.asscalar())
-                    box_losses.append(box_loss.asscalar())
                 autograd.backward(losses)
             trainer.step(batch_size) # normalize by batch_size
             if args.log_interval and not (i + 1) % args.log_interval:
-                total_cls_loss = np.array(cls_losses, dtype=np.float32).mean()
-                total_ctr_loss = np.array(ctr_losses, dtype=np.float32).mean()
-                total_box_loss = np.array(box_losses, dtype=np.float32).mean()
+                total_cls_loss, total_ctr_loss, total_box_loss = 0., 0., 0.
+                for cls_loss, ctr_loss, box_loss in zip(cls_losses, ctr_losses, box_losses):
+                    total_cls_loss += cls_loss.asscalar()
+                    total_ctr_loss += ctr_loss.asscalar()
+                    total_box_loss += box_loss.asscalar()
+                total_cls_loss /= batch_size
+                total_ctr_loss /= batch_size
+                total_box_loss /= batch_size
                 print_loss = {'cls_loss': total_cls_loss, 'ctr_loss': total_ctr_loss, \
                         'box_loss': total_box_loss}
                 msg = ', '.join(['{}={:.3f}'.format(k, v) for k, v in print_loss.items()])
@@ -332,7 +333,7 @@ def train(net, train_data, val_data, eval_metric, ctx, args):
             epoch, (time.time() - tic)))
         if not (epoch + 1) % args.val_interval:
             # consider reduce the frequency of validation to save time
-            map_name, mean_ap = validate(net, val_data, ctx, eval_metric, args)
+            map_name, mean_ap = validate(net, val_data, ctx, eval_metric)
             val_msg = '\n'.join(['{}={}'.format(k, v) for k, v in zip(map_name, mean_ap)])
             logger.info('[Epoch {}] Validation: \n{}'.format(epoch, val_msg))
             current_map = float(mean_ap[-1])

@@ -14,7 +14,10 @@ from IPython import embed
 from .fcos_target import FCOSBoxConverter
 from ...nn.feature import RetinaFeatureExpander
 
-__all__ = ['FCOS', 'get_fcos', 'fcos_resnet50_v1b_coco', 'fcos_resnet101_v1d_coco']
+__all__ = ['FCOS', 'get_fcos',
+           'fcos_resnet50_v1_coco',
+           'fcos_resnet50_v1b_coco',
+           'fcos_resnet101_v1d_coco']
 
 
 class ConvPredictor(nn.HybridBlock):
@@ -26,7 +29,7 @@ class ConvPredictor(nn.HybridBlock):
                         bias_initializer=bias_init)
             else:
                 self.conv = nn.Conv2D(num_channels, 3, 1, 1,
-                        weight_initializer=mx.init.Xavier(magnitude=2.),
+                        weight_initializer=mx.init.Normal(sigma=0.01),
                         bias_initializer=bias_init)
 
     def get_params(self):
@@ -48,7 +51,7 @@ class RetinaHead(nn.HybridBlock):
                         params=share_params[i]))
                 else:
                     self.conv.add(nn.Conv2D(256, 3, 1, 1, activation='relu',
-                        weight_initializer=mx.init.Xavier(magnitude=2.),
+                        weight_initializer=mx.init.Normal(sigma=0.01),
                         bias_initializer='zeros'))
 
     def _share_params(self, conv1, conv2):
@@ -83,7 +86,7 @@ class ClsBiasInit(mx.init.Initializer):
     def _init_weight(self, name, data):
         if self._cls_method == "sigmoid":
             arr = -1 * np.ones((data.size, ))
-            arr *= np.log((1 - self._pi) / self._pi)
+            arr = arr *  np.log((1 - self._pi) / self._pi)
             data[:] = arr
         elif self._cls_method == "softmax":
             pass
@@ -121,12 +124,10 @@ class FCOS(nn.HybridBlock):
                 cls_head = RetinaHead(share_params=share_cls_params)
                 cls_heads.add(cls_head)
                 share_cls_params = cls_head.get_params()
-                share_cls_params = None
                 # box
                 box_head = RetinaHead(share_params=share_box_params)
                 box_heads.add(box_head)
                 share_box_params = box_head.get_params()
-                share_box_params = None
                 # cls preds
                 cls_pred = ConvPredictor(num_channels=self.classes,
                                 share_params=share_cls_pred_params, bias_init=bias_init)
@@ -148,6 +149,10 @@ class FCOS(nn.HybridBlock):
             self._cls_preds = cls_preds
             self._ctr_preds = ctr_preds
             self._box_preds = box_preds
+
+            # self.scale_list = [self.params.get('scale_p{}'.format(i), shape=(1,),
+            #                                   differentiable=True, allow_deferred_init=True,
+            #                                   init='ones') for i in range(retina_stages)]
 
             self._retina_features = features
             self.box_converter = FCOSBoxConverter()
@@ -188,6 +193,8 @@ class FCOS(nn.HybridBlock):
             fm_box = x
             fm_box = self._box_heads[i](fm_box)
             box_pred = self._box_preds[i](fm_box)
+            # TODO@ANG: fix bugs in scale param
+            # box_pred = F.exp(F.broadcast_mul(scale_list[i], box_pred) * stride
             box_pred = F.exp(box_pred) * stride
             box_pred = F.reshape(F.transpose(box_pred, (0, 2, 3, 1)), (0, -1, 4))
 
@@ -222,6 +229,27 @@ def get_fcos(name, dataset, pretrained=False, ctx=mx.cpu(),
     return net
 
 
+def fcos_resnet50_v1_coco(pretrained=False, pretrained_base=True, **kwargs):
+    from ..resnet import resnet50_v1
+    from ...data import COCODetection
+    classes = COCODetection.CLASSES
+    pretrained_base = False if pretrained else pretrained_base
+    base_network = resnet50_v1(pretrained=pretrained_base, **kwargs)
+    features = RetinaFeatureExpander(network=base_network,
+                                     pretrained=pretrained_base,
+                                     outputs=['stage2_activation3',
+                                              'stage3_activation5',
+                                              'stage4_activation2'])
+    # out = features(mx.sym.var('data'))
+    # for o in out:
+    #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
+    return get_fcos(name="resnet50_v1", dataset="coco", pretrained=pretrained,
+                    features=features, classes=classes, base_stride=128, short=800,
+                    max_size=1333, norm_layer=None, norm_kwargs=None,
+                    valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
+                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
+
+
 def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
     from ..resnetv1b import resnet50_v1b
     from ...data import COCODetection
@@ -237,7 +265,7 @@ def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
     # out = features(mx.sym.var('data'))
     # for o in out:
     #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
-    return get_fcos(name="fcos_resnet50_v1b", dataset="coco", pretrained=pretrained,
+    return get_fcos(name="resnet50_v1b", dataset="coco", pretrained=pretrained,
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
@@ -256,7 +284,7 @@ def fcos_resnet101_v1d_coco(pretrained=False, pretrained_base=True, **kwargs):
                                      outputs=['layers2_relu11_fwd',
                                               'layers3_relu68_fwd',
                                               'layers4_relu8_fwd'])
-    return get_fcos(name="fcos_resnet101_v1d", dataset="coco", pretrained=pretrained,
+    return get_fcos(name="resnet101_v1d", dataset="coco", pretrained=pretrained,
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
