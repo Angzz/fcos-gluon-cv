@@ -202,6 +202,7 @@ _models = {
     'fcos_resnet50_v1b_coco': fcos_resnet50_v1b_coco,
     'fcos_resnet101_v1d_coco': fcos_resnet101_v1d_coco,
     'fcos_resnet50_v1_coco': fcos_resnet50_v1_coco,
+    'fcos_se_resnext101_64x4d_coco': fcos_se_resnext101_64x4d_coco,
 }
 
 

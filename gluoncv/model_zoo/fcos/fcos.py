@@ -17,7 +17,8 @@ from ...nn.feature import RetinaFeatureExpander
 __all__ = ['FCOS', 'get_fcos',
            'fcos_resnet50_v1_coco',
            'fcos_resnet50_v1b_coco',
-           'fcos_resnet101_v1d_coco']
+           'fcos_resnet101_v1d_coco',
+           'fcos_se_resnext101_64x4d_coco']
 
 
 class ConvPredictor(nn.HybridBlock):
@@ -285,6 +286,24 @@ def fcos_resnet101_v1d_coco(pretrained=False, pretrained_base=True, **kwargs):
                                               'layers3_relu68_fwd',
                                               'layers4_relu8_fwd'])
     return get_fcos(name="resnet101_v1d", dataset="coco", pretrained=pretrained,
+                    features=features, classes=classes, base_stride=128, short=800,
+                    max_size=1333, norm_layer=None, norm_kwargs=None,
+                    valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
+                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
+
+
+def fcos_se_resnext101_64x4d_coco(pretrained=False, pretrained_base=True, **kwargs):
+    from ..resnext import se_resnext101_64x4d
+    from ...data import COCODetection
+    classes = COCODetection.CLASSES
+    pretrained_base = False if pretrained else pretrained_base
+    base_network = se_resnext101_64x4d(pretrained=pretrained_base, **kwargs)
+    features = RetinaFeatureExpander(network=base_network,
+                                     pretrained=pretrained_base,
+                                     outputs=['stage2_activation3',
+                                              'stage3_activation22',
+                                              'stage4_activation2'])
+    return get_fcos(name="se_resnet101_64x4d", dataset="coco", pretrained=pretrained,
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],

@@ -132,7 +132,8 @@ class FCOSDefaultTrainTransform(object):
         # generate training targets for fcos
         tbox = mx.nd.round(mx.nd.array(bbox))
         tbox[:, 4] += 1. #
-        cls_targets, ctr_targets, box_targets, cor_targets = self._target_generator(img, tbox)
+        cls_targets, ctr_targets, box_targets, cor_targets = \
+            self._target_generator.generate_targets(img, tbox)
 
         # to tensor
         img = mx.nd.image.to_tensor(img)
