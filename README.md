@@ -54,4 +54,4 @@ Note: We will update the results after the experiments done.
 
 ## Reference 
 
-* **FCOS:** Zhi Tian, Chunhua Shen, Hao Chen, Tong He.<br />"FCOS: Fully Convolutional One-Stage Object Detection." arXiv (2019). [[paper](https://arxiv.org/pdf/1904.01355)] [[official-code](https://github.com/tianzhi0549/FCOS)] [mmdet](https://github.com/open-mmlab/mmdetection)]
+* **FCOS:** Zhi Tian, Chunhua Shen, Hao Chen, Tong He.<br />"FCOS: Fully Convolutional One-Stage Object Detection." arXiv (2019). [[paper](https://arxiv.org/pdf/1904.01355)] [[official-code](https://github.com/tianzhi0549/FCOS)] [[mmdet](https://github.com/open-mmlab/mmdetection)]
