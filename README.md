@@ -43,11 +43,11 @@ Note: We will update the results after the experiments done.
 ```
 
 ## Training & Inference 
-1. Copy the training scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/train_fcos.py), then train `fcos_resnet50_v1b_coco` with:
+1. Clone the training scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/train_fcos.py), then train `fcos_resnet50_v1b_coco` with:
   ```Shell
   python3 train_fcos.py --network resnet50_v1b --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --static-alloc --batch-size 8 --log-interval 10
   ```
-2. Copy the eval scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/eval_fcos.py), then validate `fcos_resnet50_v1b_coco` with:
+2. Clone the eval scripts [here](https://github.com/Angzz/fcos-gluon-cv/blob/master/scripts/detection/fcos/eval_fcos.py), then validate `fcos_resnet50_v1b_coco` with:
   ```Shell
   python3 eval_fcos.py --network resnet50_v1b --gpus 0,1,2,3,4,5,6,7 --num-workers 32 --pretrained $SAVE_PATH/XXX.params
   ```
