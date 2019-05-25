@@ -17,8 +17,51 @@ from ...nn.feature import RetinaFeatureExpander
 __all__ = ['FCOS', 'get_fcos',
            'fcos_resnet50_v1_coco',
            'fcos_resnet50_v1b_coco',
-           'fcos_resnet101_v1d_coco',
-           'fcos_se_resnext101_64x4d_coco']
+           'fcos_resnet101_v1d_coco']
+
+
+class GroupNorm(nn.HybridBlock):
+    """
+    If the batch size is small, it's better to use GroupNorm instead of BatchNorm.
+    GroupNorm achieves good results even at small batch sizes.
+    Reference:
+      https://arxiv.org/pdf/1803.08494.pdf
+    """
+    def __init__(self, num_channels, num_groups=32, eps=1e-5,
+                 multi_precision=False, prefix=None, **kwargs):
+        super(GroupNorm, self).__init__(**kwargs)
+        with self.name_scope():
+            self.weight = self.params.get('{}_weight'.format(prefix), grad_req='write',
+                                          shape=(1, num_channels, 1, 1))
+            self.bias = self.params.get('{}_bias'.format(prefix), grad_req='write',
+                                        shape=(1, num_channels, 1, 1))
+        self.C = num_channels
+        self.G = num_groups
+        self.eps = eps
+        self.multi_precision = multi_precision
+        assert self.C % self.G == 0
+
+    def hybrid_forward(self, F, x, weight, bias):
+        # (N,C,H,W) -> (N,G,H*W*C//G)
+        x_new = F.reshape(x, (0, self.G, -1))
+        if self.multi_precision:
+            # (N,G,H*W*C//G) -> (N,G,1)
+            mean = F.mean(F.cast(x_new, "float32"), axis=-1, keepdims=True)
+            mean = F.cast(mean, "float16")
+        else:
+            mean = F.mean(x_new, axis=-1, keepdims=True)
+        # (N,G,H*W*C//G)
+        centered_x_new = F.broadcast_minus(x_new, mean)
+        if self.multi_precision:
+            # (N,G,H*W*C//G) -> (N,G,1)
+            var = F.mean(F.cast(F.square(centered_x_new),"float32"), axis=-1, keepdims=True)
+            var = F.cast(var, "float16")
+        else:
+            var = F.mean(F.square(centered_x_new), axis=-1, keepdims=True)
+        # (N,G,H*W*C//G) -> (N,C,H,W)
+        x_new = F.broadcast_div(centered_x_new, F.sqrt(var + self.eps)).reshape_like(x)
+        x_new = F.broadcast_add(F.broadcast_mul(x_new, weight),bias)
+        return x_new
 
 
 class ConvPredictor(nn.HybridBlock):
@@ -42,7 +85,7 @@ class ConvPredictor(nn.HybridBlock):
 
 
 class RetinaHead(nn.HybridBlock):
-    def __init__(self, share_params=None, **kwargs):
+    def __init__(self, share_params=None, prefix=None, **kwargs):
         super(RetinaHead, self).__init__(**kwargs)
         with self.name_scope():
             self.conv = nn.HybridSequential()
@@ -54,11 +97,7 @@ class RetinaHead(nn.HybridBlock):
                     self.conv.add(nn.Conv2D(256, 3, 1, 1, activation='relu',
                         weight_initializer=mx.init.Normal(sigma=0.01),
                         bias_initializer='zeros'))
-
-    def _share_params(self, conv1, conv2):
-        """share conv2 weights and grad to conv1"""
-        conv1 = nn.Conv2D(256, 3, 1, 1, params=conv2.params)
-        return conv1
+                self.conv.add(GroupNorm(num_channels=256, prefix=prefix))
 
     def set_params(self, newconv):
         for b, nb in zip(self.conv, newconv):
@@ -122,28 +161,33 @@ class FCOS(nn.HybridBlock):
                         share_box_pred_params = None, None, None
             for i in range(self._retina_stages):
                 # cls
-                cls_head = RetinaHead(share_params=share_cls_params)
+                cls_head = RetinaHead(share_params=share_cls_params, prefix='cls')
                 cls_heads.add(cls_head)
                 share_cls_params = cls_head.get_params()
+                share_cls_params = None
                 # box
-                box_head = RetinaHead(share_params=share_box_params)
+                box_head = RetinaHead(share_params=share_box_params, prefix='box')
                 box_heads.add(box_head)
                 share_box_params = box_head.get_params()
+                share_cls_params = None
                 # cls preds
                 cls_pred = ConvPredictor(num_channels=self.classes,
                                 share_params=share_cls_pred_params, bias_init=bias_init)
                 cls_preds.add(cls_pred)
                 share_cls_pred_params = cls_pred.get_params()
+                share_cls_pred_params = None
                 # ctr preds
                 ctr_pred = ConvPredictor(num_channels=1,
                                 share_params=share_ctr_pred_params, bias_init='zeros')
                 ctr_preds.add(ctr_pred)
                 share_ctr_pred_params = ctr_pred.get_params()
+                share_ctr_pred_params = None
                 # box preds
                 box_pred = ConvPredictor(num_channels=4,
                                 share_params=share_box_pred_params, bias_init='zeros')
                 box_preds.add(box_pred)
                 share_box_pred_params = box_pred.get_params()
+                share_box_pred_params = None
 
             self._cls_heads = cls_heads
             self._box_heads = box_heads
@@ -151,9 +195,16 @@ class FCOS(nn.HybridBlock):
             self._ctr_preds = ctr_preds
             self._box_preds = box_preds
 
-            # self.scale_list = [self.params.get('scale_p{}'.format(i), shape=(1,),
-            #                                   differentiable=True, allow_deferred_init=True,
-            #                                   init='ones') for i in range(retina_stages)]
+            self.s1 = self.params.get('scale_p1', shape=(1,), differentiable=True,
+                    allow_deferred_init=True, init='ones')
+            self.s2 = self.params.get('scale_p2', shape=(1,), differentiable=True,
+                    allow_deferred_init=True, init='ones')
+            self.s3 = self.params.get('scale_p3', shape=(1,), differentiable=True,
+                    allow_deferred_init=True, init='ones')
+            self.s4 = self.params.get('scale_p4', shape=(1,), differentiable=True,
+                    allow_deferred_init=True, init='ones')
+            self.s5 = self.params.get('scale_p5', shape=(1,), differentiable=True,
+                    allow_deferred_init=True, init='ones')
 
             self._retina_features = features
             self.box_converter = FCOSBoxConverter()
@@ -166,7 +217,7 @@ class FCOS(nn.HybridBlock):
         """
         pass
 
-    def hybrid_forward(self, F, x):
+    def hybrid_forward(self, F, x, s1, s2, s3, s4, s5):
         """make fcos heads
         x : [B, C, H, W]
 
@@ -179,6 +230,7 @@ class FCOS(nn.HybridBlock):
         cls_preds_list = []
         ctr_preds_list = []
         box_preds_list = []
+        scale_params = [s1, s2, s3, s4, s5]
         stride = self.base_stride
         retina_fms = self._retina_features(x)
         for i in range(self._retina_stages):
@@ -195,8 +247,8 @@ class FCOS(nn.HybridBlock):
             fm_box = self._box_heads[i](fm_box)
             box_pred = self._box_preds[i](fm_box)
             # TODO@ANG: fix bugs in scale param
-            # box_pred = F.exp(F.broadcast_mul(scale_list[i], box_pred) * stride
-            box_pred = F.exp(box_pred) * stride
+            box_pred = F.exp(F.broadcast_mul(scale_params[i], box_pred)) * stride
+            # box_pred = F.exp(box_pred) * stride
             box_pred = F.reshape(F.transpose(box_pred, (0, 2, 3, 1)), (0, -1, 4))
 
             cls_preds_list.append(cls_pred)
@@ -241,14 +293,11 @@ def fcos_resnet50_v1_coco(pretrained=False, pretrained_base=True, **kwargs):
                                      outputs=['stage2_activation3',
                                               'stage3_activation5',
                                               'stage4_activation2'])
-    # out = features(mx.sym.var('data'))
-    # for o in out:
-    #     print(o.infer_shape(data=(1, 3, 562, 1000))[1][0])
     return get_fcos(name="resnet50_v1", dataset="coco", pretrained=pretrained,
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
-                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
+                    nms_thresh=0.6, nms_topk=1000, save_topk=100)
 
 
 def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
@@ -270,7 +319,7 @@ def fcos_resnet50_v1b_coco(pretrained=False, pretrained_base=True, **kwargs):
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
-                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
+                    nms_thresh=0.6, nms_topk=1000, save_topk=100)
 
 
 def fcos_resnet101_v1d_coco(pretrained=False, pretrained_base=True, **kwargs):
@@ -289,25 +338,7 @@ def fcos_resnet101_v1d_coco(pretrained=False, pretrained_base=True, **kwargs):
                     features=features, classes=classes, base_stride=128, short=800,
                     max_size=1333, norm_layer=None, norm_kwargs=None,
                     valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
-                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
-
-
-def fcos_se_resnext101_64x4d_coco(pretrained=False, pretrained_base=True, **kwargs):
-    from ..resnext import se_resnext101_64x4d
-    from ...data import COCODetection
-    classes = COCODetection.CLASSES
-    pretrained_base = False if pretrained else pretrained_base
-    base_network = se_resnext101_64x4d(pretrained=pretrained_base, **kwargs)
-    features = RetinaFeatureExpander(network=base_network,
-                                     pretrained=pretrained_base,
-                                     outputs=['stage2_activation3',
-                                              'stage3_activation22',
-                                              'stage4_activation2'])
-    return get_fcos(name="se_resnet101_64x4d", dataset="coco", pretrained=pretrained,
-                    features=features, classes=classes, base_stride=128, short=800,
-                    max_size=1333, norm_layer=None, norm_kwargs=None,
-                    valid_range=[(512, np.inf), (256, 512), (128, 256), (64, 128), (0, 64)],
-                    nms_thresh=0.5, nms_topk=1000, save_topk=100)
+                    nms_thresh=0.6, nms_topk=1000, save_topk=100)
 
 
 if __name__ == '__main__':
