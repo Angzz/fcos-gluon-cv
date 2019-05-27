@@ -124,6 +124,7 @@ class FCOSTargetGenerator(nn.Block):
 
         return cls_targets, ctr_targets, box_targets, cor_targets
 
+
     def forward(self, img, boxes):
         pass
 
@@ -144,7 +145,7 @@ class FCOSBoxConverter(nn.HybridBlock):
             coordinates for the feature map corresponding to original image.
         """
         cx, cy = F.split(box_cords, num_outputs=2, axis=-1)
-        pl, pt, pr, pb = F.split(box_preds, num_outputs=4, axis=-1)
+        pl, pt, pr, pb = F.split(box_preds, num_outputs=5, axis=-1)
         x1 = cx - pl
         y1 = cy - pt
         x2 = cx + pr
@@ -154,18 +155,14 @@ class FCOSBoxConverter(nn.HybridBlock):
 
 
 if __name__ == '__main__':
-    img = nd.zeros(shape=(600, 899, 3))
+    img = nd.zeros(shape=(1000, 1000, 3))
 
-    boxes = nd.array([[1, 88, 821, 480, 60],
-                      [1, 75, 600, 251, 60],
-                      [1, 235, 899, 598, 60],
-                      [336, 48, 395, 117, 29]], ctx=mx.cpu())
+    boxes = nd.array([[291, 114, 901, 778, 60],
+                      [504, 263, 780, 490, 15],
+                      [461, 222, 829, 579, 20],
+                      [24, 205, 389, 800, 15]], ctx=mx.cpu())
 
     target_generator = FCOSTargetGenerator()
-    cls_targets, ctr_targets, box_targets, cor_targets = target_generator(img, boxes)
-
+    cls_targets, ctr_targets, box_targets, cor_targets = \
+            target_generator.generate_targets(img, boxes)
     from IPython import embed; embed()
-
-
-
-
