@@ -145,7 +145,7 @@ class FCOSBoxConverter(nn.HybridBlock):
             coordinates for the feature map corresponding to original image.
         """
         cx, cy = F.split(box_cords, num_outputs=2, axis=-1)
-        pl, pt, pr, pb = F.split(box_preds, num_outputs=5, axis=-1)
+        pl, pt, pr, pb = F.split(box_preds, num_outputs=4, axis=-1)
         x1 = cx - pl
         y1 = cy - pt
         x2 = cx + pr
