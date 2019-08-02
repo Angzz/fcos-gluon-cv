@@ -7,8 +7,8 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 | Model | Backbone | Train Size | Batch Size | AP(val) |
 | :----------: | :----------: | :----------: | :----------: | :----------: |
 | fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | 
-| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | 
-| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - |
+| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | 33.1 | 
+| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | 37.5 |
 
 Note: To be update.
 
