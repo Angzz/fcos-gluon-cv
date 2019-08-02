@@ -4,13 +4,13 @@ This is an unofficial implementation of [FCOS](https://arxiv.org/abs/1904.01355)
 
 ## Main Results
 
-| Model | Backbone | Train Size | Batch Size | Test Time/im | AP(val) | Link |
-| :----------: | :----------: | :----------: | :----------: | :----------: | :----------: | :----------: |
-| fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | - | - |
-| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | - | - |
-| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - | - | - |
+| Model | Backbone | Train Size | Batch Size | AP(val) |
+| :----------: | :----------: | :----------: | :----------: | :----------: |
+| fcos_resnet50_v1_coco | ResNet50-V1 | 800 | 1 | - | 
+| fcos_resnet50_v1b_coco | ResNet50-V1b | 800 | 1 | - | 
+| fcos_resnet101_v1d_coco | ResNet101-V1d | 800 | 1 | - |
 
-Note: We will update the results after the experiments done.
+Note: To be update.
 
 ## Installation 
 1. Install cuda `10.0` and mxnet `1.4.0`.
